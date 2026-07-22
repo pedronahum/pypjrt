@@ -216,7 +216,7 @@ Pre-1.0 and honest about it. The API is settled in shape — in particular `Even
 and `Executable` is device-list-shaped, both fixed early so they would not need breaking later —
 but names may still move before 1.0.
 
-236 tests run across three tiers: host-only (no plugin required), CPU-plugin, and GPU. The suite
+250 tests run across three tiers: host-only (no plugin required), CPU-plugin, and GPU. The suite
 treats a skipped test in a required tier as a failure, type-checks the package with pyright,
 regenerates the ABI from the pinned headers and fails on any diff, and keeps a directory of
 snippets that **must not** type-check.
