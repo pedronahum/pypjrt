@@ -1,0 +1,109 @@
+name: publish
+
+# Publishes to PyPI via Trusted Publishing (OIDC) -- no API token is stored in
+# this repository. PyPI is told to trust *this* workflow file, by filename, on
+# this repo; GitHub mints a short-lived token at run time.
+#
+# PyPI's "Add a new pending publisher" form wants:
+#   Owner:            pedronahum
+#   Repository name:  pypjrt
+#   Workflow name:    publish.yml      <- the FILENAME, not the `name:` above
+#   Environment name: pypi
+#
+# Cutting a release:
+#   1. bump `version` in pyproject.toml, commit, push
+#   2. gh release create v0.1.0 --generate-notes     (or the Releases UI)
+#   -> `release: published` fires this workflow
+#
+# Or run it by hand against TestPyPI first via the Actions tab.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Where to upload
+        required: true
+        default: testpypi
+        type: choice
+        options: [testpypi, pypi]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - uses: astral-sh/setup-uv@v5
+
+      # Never ship a wheel that has not passed the host-only suite. tier1/tier2
+      # need a real PJRT plugin and cannot run here; ci.yml covers what CI can.
+      - name: tier0 must pass before anything is published
+        env:
+          PYPJRT_REQUIRED_TIERS: tier0
+        run: |
+          uv venv .venv
+          uv pip install --python .venv/bin/python -e '.[dev]'
+          .venv/bin/python -m pytest -q
+
+      - name: build sdist and wheel
+        run: uv build --out-dir dist
+
+      # The package claims zero runtime dependencies; that claim is checkable.
+      - name: the wheel must declare no unconditional dependencies
+        run: |
+          .venv/bin/python - <<'PY'
+          import glob, zipfile, sys
+          whl = glob.glob("dist/*.whl")[0]
+          with zipfile.ZipFile(whl) as z:
+              meta = z.read([n for n in z.namelist() if n.endswith("METADATA")][0]).decode()
+          hard = [l for l in meta.splitlines()
+                  if l.startswith("Requires-Dist:") and "extra ==" not in l]
+          print("\n".join(l for l in meta.splitlines() if l.startswith(("Name:", "Version:"))))
+          if hard:
+              sys.exit("wheel declares unconditional dependencies:\n" + "\n".join(hard))
+          print("ok: no unconditional dependencies")
+          PY
+
+      - name: metadata must be valid for PyPI
+        run: |
+          uv pip install --python .venv/bin/python twine
+          .venv/bin/python -m twine check dist/*
+
+      - uses: actions/upload-artifact@v4
+        with: { name: dist, path: dist/ }
+
+  testpypi:
+    needs: build
+    if: github.event_name == 'workflow_dispatch' && inputs.target == 'testpypi'
+    runs-on: ubuntu-latest
+    environment:
+      name: testpypi
+      url: https://test.pypi.org/p/pypjrt
+    permissions:
+      id-token: write            # required to mint the OIDC token
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { name: dist, path: dist/ }
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+
+  pypi:
+    needs: build
+    if: github.event_name == 'release' || inputs.target == 'pypi'
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/pypjrt
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { name: dist, path: dist/ }
+      - uses: pypa/gh-action-pypi-publish@release/v1

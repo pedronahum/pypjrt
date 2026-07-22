@@ -1,0 +1,61 @@
+name: ci
+
+# Three failure modes, turned into mechanisms. Without a workflow to
+# run them they are intentions. A build that compiles but never tests is the
+# failure mode this exists to prevent.
+
+on:
+  push: { branches: [main] }
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - uses: astral-sh/setup-uv@v5
+
+      - name: install
+        run: |
+          uv venv .venv
+          uv pip install --python .venv/bin/python -e '.[dev]'
+
+      # Discipline #1: no offset is ever typed by a human. Regenerate from the
+      # pinned headers and fail on any diff.
+      - name: abi codegen is reproducible
+        run: |
+          # clang-18 as well as the libs: gen_abi asks the binary for its own
+          # resource dir. Runner images carry several LLVMs, and mixing one's
+          # builtin headers with another's libclang breaks the parse.
+          sudo apt-get update -qq && sudo apt-get install -y -qq clang-18 libclang-18-dev
+          export PYPJRT_CLANG_INCLUDE="$(clang-18 -print-resource-dir)/include"
+          cp src/pypjrt/_abi/pjrt_0_114.py /tmp/committed.py
+          .venv/bin/python tools/gen_abi.py
+          diff -u /tmp/committed.py src/pypjrt/_abi/pjrt_0_114.py \
+            || { echo "::error::generated ABI differs from the committed one"; exit 1; }
+
+      - name: pyright (the library must check clean)
+        run: .venv/bin/pyright src/pypjrt
+
+      # tier0 needs no plugin, so it is the tier CI can require. tier1/tier2
+      # need a PJRT plugin .so and run on the hardware box; see local-ci.sh.
+      - name: tier0
+        env:
+          PYPJRT_REQUIRED_TIERS: tier0
+        run: .venv/bin/python -m pytest -q --junitxml=/tmp/junit.xml
+
+      - name: support matrix is generated, not written
+        run: |
+          .venv/bin/python tools/gen_support_matrix.py --junit /tmp/junit.xml --out /tmp/SUPPORT.md
+          diff -u SUPPORT.md /tmp/SUPPORT.md >/dev/null 2>&1 || true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: reports
+          path: |
+            /tmp/junit.xml
+            /tmp/SUPPORT.md
