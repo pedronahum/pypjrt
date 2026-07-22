@@ -22,7 +22,17 @@ from .transfer import AsyncTransfer, ShapeSpec
 from . import typing
 from .typing import DType
 
-__version__ = "0.0.1.dev0"
+# Single source of truth is pyproject.toml; duplicating it here means the two
+# drift and the wheel reports a version it is not. Falls back for a source tree
+# that was never installed.
+from importlib.metadata import PackageNotFoundError as _NotFound, version as _version
+
+try:
+    __version__ = _version("pypjrt")
+except _NotFound:  # pragma: no cover - running from a bare checkout
+    __version__ = "0.0.0.dev0"
+
+del _version, _NotFound
 __all__ = [
     "Plugin", "Extension", "find_plugin", "CompileOptions", "errors",
     "Client", "Device", "Buffer", "Event", "Executable", "Memory", "ExecuteContext",

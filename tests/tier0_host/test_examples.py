@@ -55,3 +55,16 @@ def test_index_mentions_no_example_that_does_not_exist():
 def test_runner_discovers_all_of_them():
     src = (EXAMPLES / "run_all.py").read_text()
     assert '[0-9][0-9]_*.py' in src, "run_all.py glob no longer matches the examples"
+
+
+def test_version_matches_pyproject():
+    """A hardcoded __version__ drifts from pyproject and the wheel then lies
+    about what it is. This caught exactly that before the first release."""
+    import re
+    import pypjrt
+    text = (ROOT / "pyproject.toml").read_text()
+    declared = re.search(r'^version = "([^"]+)"', text, re.M).group(1)
+    assert pypjrt.__version__ == declared, (
+        f"pypjrt.__version__ is {pypjrt.__version__!r}, pyproject says {declared!r}. "
+        "__version__ comes from installed metadata, so after a version bump "
+        "reinstall: uv pip install --python .venv/bin/python -e '.[dev]'")

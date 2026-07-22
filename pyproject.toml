@@ -1,6 +1,6 @@
 [project]
 name = "pypjrt"
-version = "0.0.1.dev0"
+version = "0.1.0"
 description = "A dependency-free Python client for the PJRT C API and the XLA FFI"
 readme = "README.md"
 requires-python = ">=3.10"

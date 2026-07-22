@@ -79,7 +79,7 @@ scriptable, dependency-free second opinion.
 ## Install
 
 ```sh
-pip install git+https://github.com/pedronahum/pypjrt      # pre-1.0; not on PyPI yet
+pip install pypjrt
 ```
 
 You also need a **PJRT plugin** — the vendor's shared library. The easiest source is a JAX plugin
