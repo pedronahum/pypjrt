@@ -170,6 +170,19 @@ def my_kernel(call):
 Then reference it from StableHLO as
 `stablehlo.custom_call @my_kernel(...) {api_version = 4 : i32}`.
 
+The handler is where you *launch* a kernel, too — compile Triton IR through the plugin, load the
+PTX with `cuda.module_load_data`, and `cuda.launch_kernel` it on XLA's stream, all from Python:
+
+```python
+fn = cuda.module_get_function(cuda.module_load_data(kernel.asm), "double_kernel")
+cuda.launch_kernel(fn, grid=1, block=128,
+                   params=[ctypes.c_void_p(x.data), ctypes.c_void_p(y.data)],
+                   stream=call.stream())
+```
+
+See [`examples/09_gpu_kernels.py`](examples/09_gpu_kernels.py) for the whole path, from Triton IR
+to a running kernel, with no `triton` package and no C++ shim.
+
 Device-specific code lives in clearly-named modules — `pypjrt.ffi`, `pypjrt.cuda`,
 `pypjrt.triton` — so that trading away portability is visible at the import. The core never names
 a device.
